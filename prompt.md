@@ -1,0 +1,417 @@
+Trabalho da disciplina de Tópicos especiais em IA, ministrada pelo prof dr. Jadsom Sampaio de Figueiredo
+
+
+
+import sys
+import traceback
+import zipfile
+from contextlib import redirect_stdout
+from pathlib import Path
+
+try:
+    import numpy as np
+    import pandas as pd
+except ImportError:
+    sys.exit("Instale: pip install pandas openpyxl xlrd matplotlib")
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # só salva arquivo; evita janelas travando o console
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+    from matplotlib.patches import Patch
+    from matplotlib.ticker import FuncFormatter
+except ImportError:
+    plt = None
+
+PASTA_INSPECAO = "inspeção de dados"
+PASTA_EDA = "análise exploratória (EDA)"
+DATA, WELL = "DATEPRD", "NPD_WELL_BORE_NAME"
+WELL_TYPE, FLOW_KIND = "WELL_TYPE", "FLOW_KIND"
+NOMES = {"BORE_OIL_VOL": "Óleo", "BORE_GAS_VOL": "Gás",
+         "BORE_WAT_VOL": "Água produzida", "BORE_WI_VOL": "Água injetada"}
+VOLUMES = ["BORE_OIL_VOL", "BORE_GAS_VOL", "BORE_WAT_VOL", "BORE_WI_VOL"]
+
+
+class Tee:
+    """Escreve no console e no arquivo de relatório ao mesmo tempo."""
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, s):
+        for st in self.streams:
+            st.write(s)
+
+    def flush(self):
+        for st in self.streams:
+            st.flush()
+
+
+def titulo(texto):
+    print(f"\n{'=' * 78}\n{texto.upper()}\n{'=' * 78}")
+
+
+def dialogo(tipo, padrao=None):
+    """Abre janela de seleção; se não houver interface gráfica, pede no console."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            if tipo == "arquivo":
+                nome = filedialog.askopenfilename(
+                    title="Selecione o ZIP ou Excel do Volve",
+                    filetypes=[("ZIP ou Excel", "*.zip *.xlsx *.xls"), ("Todos", "*.*")])
+            else:
+                nome = filedialog.askdirectory(
+                    title="Pasta para extração e relatórios", initialdir=str(padrao))
+        finally:
+            root.destroy()
+    except Exception:
+        nome = input(f"Digite o caminho do {tipo}: ").strip().strip('"')
+    return Path(nome) if nome else None
+
+
+def extrair_zip(zip_path, destino):
+    pasta = destino / f"{zip_path.stem}_extraido"
+    pasta.mkdir(parents=True, exist_ok=True)
+    base = pasta.resolve()
+    with zipfile.ZipFile(zip_path) as zf:
+        seguros = [i for i in zf.infolist() if base in (pasta / i.filename).resolve().parents
+                   or (pasta / i.filename).resolve() == base]  # bloqueia "../" (zip-slip)
+        zf.extractall(pasta, members=seguros)
+    return pasta
+
+
+def escolher_excel(pasta):
+    excels = sorted(f for f in pasta.rglob("*")
+                    if f.suffix.lower() in {".xlsx", ".xls"} and not f.name.startswith("~$"))
+    if not excels:
+        print("Nenhum Excel encontrado. Se houver ZIP dentro do ZIP, selecione o interno.")
+        return None
+    if len(excels) == 1:
+        return excels[0]
+    for i, f in enumerate(excels, 1):
+        print(f"{i}. {f.relative_to(pasta)}")
+    esc = input("Número da planilha a analisar: ").strip()
+    return excels[int(esc) - 1] if esc.isdigit() and 1 <= int(esc) <= len(excels) else None
+
+
+def preparar(df):
+    """Padroniza colunas, converte data e volumes; avisa sobre valores não numéricos."""
+    df.columns = [str(c).strip() for c in df.columns]
+    if DATA in df.columns:
+        df[DATA] = pd.to_datetime(df[DATA], errors="coerce")
+    for c in VOLUMES:
+        if c in df.columns:
+            antes = df[c].isna().sum()
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+            novos = df[c].isna().sum() - antes
+            if novos:
+                print(f"ATENÇÃO: {novos} valores não numéricos em {c} viraram vazio.")
+    return df
+
+
+def mostrar(df, max_linhas=40):
+    if df.empty:
+        print("(sem registros)")
+        return
+    print(df.head(max_linhas).to_string(index=False))
+    if len(df) > max_linhas:
+        print(f"... {max_linhas} de {len(df)} linhas; veja o CSV completo.")
+
+
+def inspecionar_aba(aba, df, acc):
+    print(f"\nAba: {aba} | Registros: {len(df):,} | Colunas: {len(df.columns)}")
+    print("Colunas:", ", ".join(df.columns))
+    acc["abas"].append({"aba": aba, "registros": len(df), "colunas": len(df.columns),
+                        "nomes_colunas": " | ".join(df.columns)})
+
+    if DATA in df.columns:
+        print(f"Período: {df[DATA].min():%d/%m/%Y} até {df[DATA].max():%d/%m/%Y}"
+              if df[DATA].notna().any() else "Período: não identificado")
+
+    # Valores ausentes
+    aus = df.isna().sum().rename_axis("coluna").reset_index(name="valores_ausentes")
+    aus.insert(0, "aba", aba)
+    acc["aus"].append(aus)
+    titulo(f"Valores ausentes — {aba}")
+    mostrar(aus[aus.valores_ausentes > 0]) if aus.valores_ausentes.any() else print("Nenhum.")
+
+    # Distribuição de classificações
+    for col in (WELL_TYPE, FLOW_KIND):
+        if col in df.columns:
+            cont = df[col].fillna("(vazio)").astype(str).value_counts().rename_axis("categoria") \
+                .reset_index(name="registros")
+            cont.insert(0, "coluna", col)
+            cont.insert(0, "aba", aba)
+            acc["cls"].append(cont)
+            titulo(f"Distribuição de {col} — {aba}")
+            print(cont.drop(columns=["aba", "coluna"]).to_string(index=False))
+
+    # Resumo por poço / tipo / fluxo
+    keys = [c for c in (WELL, WELL_TYPE, FLOW_KIND) if c in df.columns]
+    if WELL in keys and len(keys) >= 2:
+        d = df.assign(_n=1)
+        aggs = {"registros": ("_n", "sum")}
+        if DATA in d.columns:
+            aggs.update(data_inicio=(DATA, "min"), data_fim=(DATA, "max"))
+        for c in VOLUMES:
+            if c in d.columns:
+                aggs[f"soma_{c}"] = (c, lambda s: s.sum(min_count=1))
+        rp = d.groupby(keys, dropna=False).agg(**aggs).reset_index()
+        rp.insert(0, "aba", aba)
+        acc["pocos"].append(rp)
+        titulo(f"Resumo por poço, tipo e fluxo — {aba}")
+        mostrar(rp.drop(columns="aba"), 60)
+
+        # Poços com mais de uma combinação (alerta, não confirmação de erro)
+        multi = rp.groupby(WELL, dropna=False).size()
+        multi = multi[multi > 1]
+        titulo(f"Verificação de classificações — {aba}")
+        if multi.empty:
+            print("Nenhum poço com múltiplas combinações de tipo/fluxo.")
+        else:
+            print("Poços em mais de uma combinação (revisar; pode ser conversão legítima):")
+            mostrar(rp[rp[WELL].isin(multi.index)][keys + ["registros"]])
+
+    # Duplicidades poço + data
+    if DATA in df.columns and WELL in df.columns:
+        dup = df[df.duplicated([WELL, DATA], keep=False)]
+        titulo(f"Duplicidades poço+data — {aba}")
+        if dup.empty:
+            print("Nenhuma.")
+        else:
+            dr = dup.groupby(WELL, dropna=False).size().reset_index(name="registros_duplicados")
+            dr.insert(0, "aba", aba)
+            acc["dup"].append(dr)
+            mostrar(dr.drop(columns="aba"))
+
+
+def formatar_eixos(ax, ymax=None):
+    loc = mdates.AutoDateLocator()
+    ax.xaxis.set_major_locator(loc)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
+    ax.grid(True, alpha=0.3)
+    if ymax is not None:
+        casas = 0 if ymax >= 100 else 2  # valores pequenos mantêm casas decimais
+        ax.yaxis.set_major_formatter(FuncFormatter(
+            lambda v, _: f"{v:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")))
+
+
+def salvar(fig, pasta, nome):
+    pasta.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(pasta / f"{nome}.png", dpi=300)
+    plt.close(fig)
+    print(f"Salvo: {pasta.name}/{nome}.png")
+
+
+def serie_geral(df, saida):
+    """4 gráficos (um por volume) na pasta 'inspeção de dados'."""
+    cols = [c for c in VOLUMES if c in df.columns]
+    if DATA not in df.columns or not cols:
+        return
+    serie = df.groupby(DATA)[cols].sum(min_count=1).sort_index()
+    serie.reset_index().to_csv(saida / "volumes_diarios_agregados_por_data.csv",
+                               index=False, encoding="utf-8-sig")
+    titulo(f"Gráficos de {PASTA_INSPECAO}")
+    print("Soma de todos os poços por data (visão geral; não mostra conectividade).")
+    if plt is None:
+        print("Matplotlib não instalado; gráficos não criados.")
+        return
+    for c in cols:
+        y = serie[c]
+        fig, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(y.index, y, color="#1f77b4", linewidth=1.0, alpha=0.6, label=f"{c} (diário)")
+        ax.plot(y.index, y.rolling(30, min_periods=1).mean(), color="#d62728",
+                linewidth=2.0, label="Média móvel de 30 dias")
+        ax.set_title(f"Volve — {NOMES.get(c, c)} diário agregado (todos os poços)",
+                     fontsize=15, fontweight="bold")
+        ax.set_xlabel("Data", fontsize=12)
+        ax.set_ylabel(f"{c} (unidade conforme a fonte)", fontsize=12)
+        formatar_eixos(ax, y.max())
+        ax.legend(loc="best", fontsize=11, frameon=True)
+        salvar(fig, saida / PASTA_INSPECAO, f"grafico_{c.lower()}")
+
+
+def mascaras(df):
+    """Identifica linhas de injeção e de produção."""
+    if FLOW_KIND in df.columns:
+        fk = df[FLOW_KIND].astype(str).str.lower()
+        return fk.str.contains("inj"), fk.str.contains("prod")
+    if WELL_TYPE in df.columns:
+        wt = df[WELL_TYPE].astype(str).str.upper()
+        return wt.eq("WI"), wt.eq("OP")
+    inj = df.get("BORE_WI_VOL", pd.Series(0, index=df.index)).fillna(0) > 0
+    return inj, ~inj
+
+
+def eda(df, saida):
+    """4 gráficos de análise exploratória na pasta 'análise exploratória (EDA)'."""
+    if plt is None or DATA not in df.columns or WELL not in df.columns:
+        return
+    titulo(f"{PASTA_EDA}")
+    pasta = saida / PASTA_EDA
+    inj, prod = mascaras(df)
+    print(f"Linhas de produção: {int(prod.sum()):,} | linhas de injeção: {int(inj.sum()):,}")
+    OIL, GAS, WAT, WI = VOLUMES
+    tem = lambda c: c in df.columns
+
+    # 1) Produção de óleo, gás e água ao longo do tempo (poços produtores)
+    cores = {OIL: "#2ca02c", GAS: "#d62728", WAT: "#1f77b4"}
+    cs = [c for c in (OIL, GAS, WAT) if tem(c)]
+    if cs and prod.any():
+        s1 = df[prod].groupby(DATA)[cs].sum(min_count=1).sort_index()
+        fig, axs = plt.subplots(len(cs), 1, figsize=(14, 3.6 * len(cs)), sharex=True, squeeze=False)
+        for ax, c in zip(axs[:, 0], cs):
+            ax.plot(s1.index, s1[c], color=cores[c], linewidth=1.2, label=f"{NOMES[c]} ({c})")
+            ax.set_ylabel("Volume (unidade da fonte)", fontsize=11)
+            ax.legend(loc="upper right", fontsize=11)
+            formatar_eixos(ax, s1[c].max())
+        axs[0, 0].set_title("Produção de óleo, gás e água ao longo do tempo (poços produtores)",
+                            fontsize=15, fontweight="bold")
+        axs[-1, 0].set_xlabel("Data", fontsize=12)
+        salvar(fig, pasta, "eda_01_producao_oleo_gas_agua")
+
+    # 2) Volume de água injetada por poço injetor
+    if tem(WI) and inj.any():
+        p = df[inj].pivot_table(index=DATA, columns=WELL, values=WI, aggfunc="sum").sort_index()
+        p = p.loc[:, p.sum().sort_values(ascending=False).index[:10]]  # até 10 maiores injetores
+        if p.notna().any().any():
+            fig, ax = plt.subplots(figsize=(14, 7))
+            for w in p.columns:
+                ax.plot(p.index, p[w].rolling(30, min_periods=1).mean(), linewidth=1.8, label=str(w))
+            ax.set_title("Volume de água injetada por poço injetor (média móvel de 30 dias)",
+                         fontsize=15, fontweight="bold")
+            ax.set_xlabel("Data", fontsize=12)
+            ax.set_ylabel("Água injetada (unidade da fonte)", fontsize=12)
+            ax.legend(title="Poço injetor", loc="best", fontsize=10)
+            formatar_eixos(ax, p.max().max())
+            salvar(fig, pasta, "eda_02_agua_injetada_por_poco")
+        else:
+            print("Sem volumes de injeção válidos; gráfico 2 não criado.")
+
+    # 3) Períodos de operação, interrupções e dados ausentes (um poço por linha)
+    ref = np.where(inj, df[WI] if tem(WI) else np.nan, df[OIL] if tem(OIL) else np.nan)
+    ref = pd.Series(ref, index=df.index, dtype=float)
+    status = np.select([ref.isna(), ref.eq(0), ref.gt(0)], [1, 2, 3], default=1)
+    d = pd.DataFrame({WELL: df[WELL], DATA: df[DATA], "st": status}).dropna(subset=[WELL, DATA])
+    m = d.pivot_table(index=WELL, columns=DATA, values="st", aggfunc="max")
+    if not m.empty:
+        dias = pd.date_range(m.columns.min(), m.columns.max(), freq="D")
+        m = m.reindex(columns=dias).fillna(0)  # 0 = sem registro
+        m = m.loc[d.groupby(WELL)[DATA].min().sort_values().index.intersection(m.index)]
+        cmap = ListedColormap(["#e0e0e0", "#ff7f0e", "#d62728", "#2ca02c"])
+        fig, ax = plt.subplots(figsize=(14, max(5, 0.42 * len(m) + 2)))
+        x0, x1 = mdates.date2num(dias[0]) - 0.5, mdates.date2num(dias[-1]) + 0.5
+        ax.imshow(m.values, aspect="auto", interpolation="nearest", cmap=cmap,
+                  norm=BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], 4), extent=(x0, x1, len(m), 0))
+        ax.set_yticks(np.arange(len(m)) + 0.5)
+        ax.set_yticklabels(m.index, fontsize=9)
+        ax.xaxis_date()
+        formatar_eixos(ax)
+        ax.grid(False)
+        ax.set_title("Períodos de operação, interrupções e dados ausentes por poço",
+                     fontsize=15, fontweight="bold")
+        ax.set_xlabel("Data", fontsize=12)
+        ax.set_ylabel("Poço", fontsize=12)
+        ax.legend(handles=[Patch(color="#2ca02c", label="Operando (volume > 0)"),
+                           Patch(color="#d62728", label="Interrompido (volume = 0)"),
+                           Patch(color="#ff7f0e", label="Dado ausente (vazio)"),
+                           Patch(color="#e0e0e0", label="Sem registro na data")],
+                  loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=4, fontsize=10)
+        salvar(fig, pasta, "eda_03_operacao_interrupcoes_ausentes")
+        print("Gráfico 3: produtores avaliados por BORE_OIL_VOL; injetores por BORE_WI_VOL.")
+
+    # 4) Injeção × produção (totais do campo)
+    if tem(WI) and tem(OIL) and inj.any() and prod.any():
+        t = pd.concat([df[prod].groupby(DATA)[OIL].sum(min_count=1).rename("oleo"),
+                       df[inj].groupby(DATA)[WI].sum(min_count=1).rename("inj")], axis=1, sort=True)
+        if tem(WAT):
+            t["agua"] = df[prod].groupby(DATA)[WAT].sum(min_count=1)
+        t = t.rolling(30, min_periods=1).mean()
+        fig, ax = plt.subplots(figsize=(14, 7))
+        ax2 = ax.twinx()
+        l1 = ax.plot(t.index, t["oleo"], color="#2ca02c", linewidth=2, label="Óleo produzido")
+        if "agua" in t:
+            l1 += ax.plot(t.index, t["agua"], color="#1f77b4", linewidth=2, label="Água produzida")
+        l2 = ax2.plot(t.index, t["inj"], color="#d62728", linewidth=2, linestyle="--",
+                      label="Água injetada (eixo direito)")
+        ax.set_title("Injeção de água × produção do campo (média móvel de 30 dias)",
+                     fontsize=15, fontweight="bold")
+        ax.set_xlabel("Data", fontsize=12)
+        ax.set_ylabel("Produção (unidade da fonte)", fontsize=12)
+        ax2.set_ylabel("Injeção (unidade da fonte)", fontsize=12, color="#d62728")
+        formatar_eixos(ax, t[["oleo"] + (["agua"] if "agua" in t else [])].max().max())
+        formatar_eixos(ax2, t["inj"].max())
+        ax2.grid(False)
+        ax.legend(handles=l1 + l2, loc="upper center", bbox_to_anchor=(0.5, -0.1),
+                  ncol=len(l1 + l2), fontsize=11, frameon=True)  # fora da área, sem cobrir as linhas
+        salvar(fig, pasta, "eda_04_injecao_vs_producao")
+        print("Gráfico 4 mostra correlação visual; não prova relação causal entre injetor e produtor.")
+
+
+def analisar(excel, saida):
+    saida.mkdir(parents=True, exist_ok=True)
+    abas = pd.read_excel(excel, sheet_name=None)  # lê todas as abas uma única vez
+    acc = {k: [] for k in ("abas", "aus", "cls", "pocos", "dup")}
+
+    with open(saida / "relatorio_inspecao.txt", "w", encoding="utf-8") as f, \
+            redirect_stdout(Tee(sys.stdout, f)):
+        titulo("1. Estrutura das abas")
+        print(f"Arquivo: {excel}\nAbas: {', '.join(abas)}\nRelatórios em: {saida.resolve()}")
+        for nome, df in abas.items():
+            abas[nome] = preparar(df)
+            inspecionar_aba(nome, abas[nome], acc)
+
+        daily = next((n for n in abas if n.strip().lower() == "daily production data"), None)
+        if daily:
+            serie_geral(abas[daily], saida)
+            eda(abas[daily], saida)
+
+        arquivos = {"resumo_abas": "abas", "valores_ausentes": "aus", "contagens_classificacoes": "cls",
+                    "resumo_por_poco": "pocos", "possiveis_duplicidades": "dup"}
+        for nome, chave in arquivos.items():
+            if acc[chave]:
+                dados = pd.DataFrame(acc[chave]) if chave == "abas" else pd.concat(acc[chave], ignore_index=True)
+                dados.to_csv(saida / f"{nome}.csv", index=False, encoding="utf-8-sig")
+
+
+
+
+def main():
+    titulo("Inspeção dos dados do campo Volve")
+    try:
+        entrada = dialogo("arquivo")
+        if not entrada or not entrada.exists():
+            print("Nenhum arquivo válido selecionado.")
+            return
+        destino = dialogo("pasta", entrada.parent) or entrada.parent
+        destino.mkdir(parents=True, exist_ok=True)
+
+        if entrada.suffix.lower() == ".zip":
+            pasta = extrair_zip(entrada, destino)
+            print(f"ZIP extraído em: {pasta}")
+            excel = escolher_excel(pasta)
+        elif entrada.suffix.lower() in {".xlsx", ".xls"}:
+            excel = entrada
+        else:
+            print("Formato não suportado. Selecione ZIP ou Excel.")
+            return
+        if excel:
+            analisar(excel, destino / "relatorio_inspecao_volve")
+        else:
+            print("Nenhuma planilha selecionada.")
+    except Exception:
+        titulo("Erro")
+        traceback.print_exc()
+    finally:
+        input("\nPressione Enter para fechar o console...")
+
+
+if __name__ == "__main__":
+    main()
