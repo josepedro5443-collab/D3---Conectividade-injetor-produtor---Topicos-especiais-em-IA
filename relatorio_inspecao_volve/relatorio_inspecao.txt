@@ -1,0 +1,113 @@
+
+==============================================================================
+1. ESTRUTURA DAS ABAS
+==============================================================================
+Arquivo: /workspaces/D3---Conectividade-injetor-produtor---Topicos-especiais-em-IA/Volve production data.xlsx
+Abas: Daily Production Data, Monthly Production Data
+Relatórios em: /workspaces/D3---Conectividade-injetor-produtor---Topicos-especiais-em-IA/relatorio_inspecao_volve
+
+Aba: Daily Production Data | Registros: 15,634 | Colunas: 24
+Colunas: DATEPRD, WELL_BORE_CODE, NPD_WELL_BORE_CODE, NPD_WELL_BORE_NAME, NPD_FIELD_CODE, NPD_FIELD_NAME, NPD_FACILITY_CODE, NPD_FACILITY_NAME, ON_STREAM_HRS, AVG_DOWNHOLE_PRESSURE, AVG_DOWNHOLE_TEMPERATURE, AVG_DP_TUBING, AVG_ANNULUS_PRESS, AVG_CHOKE_SIZE_P, AVG_CHOKE_UOM, AVG_WHP_P, AVG_WHT_P, DP_CHOKE_SIZE, BORE_OIL_VOL, BORE_GAS_VOL, BORE_WAT_VOL, BORE_WI_VOL, FLOW_KIND, WELL_TYPE
+Período: 01/09/2007 até 01/12/2016
+
+==============================================================================
+VALORES AUSENTES — DAILY PRODUCTION DATA
+==============================================================================
+                  aba                   coluna  valores_ausentes
+Daily Production Data            ON_STREAM_HRS               285
+Daily Production Data    AVG_DOWNHOLE_PRESSURE              6654
+Daily Production Data AVG_DOWNHOLE_TEMPERATURE              6654
+Daily Production Data            AVG_DP_TUBING              6654
+Daily Production Data        AVG_ANNULUS_PRESS              7744
+Daily Production Data         AVG_CHOKE_SIZE_P              6715
+Daily Production Data            AVG_CHOKE_UOM              6473
+Daily Production Data                AVG_WHP_P              6479
+Daily Production Data                AVG_WHT_P              6488
+Daily Production Data            DP_CHOKE_SIZE               294
+Daily Production Data             BORE_OIL_VOL              6473
+Daily Production Data             BORE_GAS_VOL              6473
+Daily Production Data             BORE_WAT_VOL              6473
+Daily Production Data              BORE_WI_VOL              9928
+
+==============================================================================
+DISTRIBUIÇÃO DE WELL_TYPE — DAILY PRODUCTION DATA
+==============================================================================
+categoria  registros
+       OP       9143
+       WI       6491
+
+==============================================================================
+DISTRIBUIÇÃO DE FLOW_KIND — DAILY PRODUCTION DATA
+==============================================================================
+ categoria  registros
+production       9161
+ injection       6473
+
+==============================================================================
+RESUMO POR POÇO, TIPO E FLUXO — DAILY PRODUCTION DATA
+==============================================================================
+NPD_WELL_BORE_NAME WELL_TYPE  FLOW_KIND  registros data_inicio   data_fim  soma_BORE_OIL_VOL  soma_BORE_GAS_VOL  soma_BORE_WAT_VOL  soma_BORE_WI_VOL
+        15/9-F-1 C        OP production        744  2014-04-08 2016-04-21          177187.33        26363071.84          207147.92               NaN
+        15/9-F-1 C        WI production          2  2014-04-07 2014-07-07             522.00           77846.76             154.47               NaN
+         15/9-F-11        OP production       1165  2013-07-08 2016-09-17         1147849.10       174310520.61         1090806.27               NaN
+         15/9-F-12        OP production       3056  2008-02-12 2016-09-17         4579609.55       667542278.02         6833320.37               NaN
+         15/9-F-14        OP production       3056  2008-02-12 2016-09-17         3942233.39       578009542.02         7121249.74               NaN
+       15/9-F-15 D        OP production        978  2014-01-12 2016-09-17          148518.56        22505350.95           52366.40               NaN
+          15/9-F-4        WI  injection       3327  2007-09-01 2016-12-01                NaN                NaN                NaN      1.624073e+07
+          15/9-F-5        OP production        144  2016-04-12 2016-09-17           38432.80         6131674.37           12788.60               NaN
+          15/9-F-5        WI  injection       3146  2007-09-01 2016-09-18                NaN                NaN                NaN      1.408941e+07
+          15/9-F-5        WI production         16  2016-04-11 2016-09-12            2727.88          430151.37             744.58      0.000000e+00
+
+==============================================================================
+VERIFICAÇÃO DE CLASSIFICAÇÕES — DAILY PRODUCTION DATA
+==============================================================================
+Poços em mais de uma combinação (revisar; pode ser conversão legítima):
+NPD_WELL_BORE_NAME WELL_TYPE  FLOW_KIND  registros
+        15/9-F-1 C        OP production        744
+        15/9-F-1 C        WI production          2
+          15/9-F-5        OP production        144
+          15/9-F-5        WI  injection       3146
+          15/9-F-5        WI production         16
+
+==============================================================================
+DUPLICIDADES POÇO+DATA — DAILY PRODUCTION DATA
+==============================================================================
+Nenhuma.
+
+Aba: Monthly Production Data | Registros: 527 | Colunas: 10
+Colunas: Wellbore name, NPDCode, Year, Month, On Stream, Oil, Gas, Water, GI, WI
+
+==============================================================================
+VALORES AUSENTES — MONTHLY PRODUCTION DATA
+==============================================================================
+                    aba        coluna  valores_ausentes
+Monthly Production Data Wellbore name                 1
+Monthly Production Data       NPDCode                 1
+Monthly Production Data          Year                 1
+Monthly Production Data         Month                 1
+Monthly Production Data     On Stream                11
+Monthly Production Data           Oil               215
+Monthly Production Data           Gas               215
+Monthly Production Data         Water               215
+Monthly Production Data            GI               526
+Monthly Production Data            WI               325
+
+==============================================================================
+GRÁFICOS DE INSPEÇÃO DE DADOS
+==============================================================================
+Soma de todos os poços por data (visão geral; não mostra conectividade).
+Salvo: inspeção de dados/grafico_bore_oil_vol.png
+Salvo: inspeção de dados/grafico_bore_gas_vol.png
+Salvo: inspeção de dados/grafico_bore_wat_vol.png
+Salvo: inspeção de dados/grafico_bore_wi_vol.png
+
+==============================================================================
+ANÁLISE EXPLORATÓRIA (EDA)
+==============================================================================
+Linhas de produção: 9,161 | linhas de injeção: 6,473
+Salvo: análise exploratória (EDA)/eda_01_producao_oleo_gas_agua.png
+Salvo: análise exploratória (EDA)/eda_02_agua_injetada_por_poco.png
+Salvo: análise exploratória (EDA)/eda_03_operacao_interrupcoes_ausentes.png
+Gráfico 3: produtores avaliados por BORE_OIL_VOL; injetores por BORE_WI_VOL.
+Salvo: análise exploratória (EDA)/eda_04_injecao_vs_producao.png
+Gráfico 4 mostra correlação visual; não prova relação causal entre injetor e produtor.

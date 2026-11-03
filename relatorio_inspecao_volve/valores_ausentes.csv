@@ -1,0 +1,35 @@
+﻿aba,coluna,valores_ausentes
+Daily Production Data,DATEPRD,0
+Daily Production Data,WELL_BORE_CODE,0
+Daily Production Data,NPD_WELL_BORE_CODE,0
+Daily Production Data,NPD_WELL_BORE_NAME,0
+Daily Production Data,NPD_FIELD_CODE,0
+Daily Production Data,NPD_FIELD_NAME,0
+Daily Production Data,NPD_FACILITY_CODE,0
+Daily Production Data,NPD_FACILITY_NAME,0
+Daily Production Data,ON_STREAM_HRS,285
+Daily Production Data,AVG_DOWNHOLE_PRESSURE,6654
+Daily Production Data,AVG_DOWNHOLE_TEMPERATURE,6654
+Daily Production Data,AVG_DP_TUBING,6654
+Daily Production Data,AVG_ANNULUS_PRESS,7744
+Daily Production Data,AVG_CHOKE_SIZE_P,6715
+Daily Production Data,AVG_CHOKE_UOM,6473
+Daily Production Data,AVG_WHP_P,6479
+Daily Production Data,AVG_WHT_P,6488
+Daily Production Data,DP_CHOKE_SIZE,294
+Daily Production Data,BORE_OIL_VOL,6473
+Daily Production Data,BORE_GAS_VOL,6473
+Daily Production Data,BORE_WAT_VOL,6473
+Daily Production Data,BORE_WI_VOL,9928
+Daily Production Data,FLOW_KIND,0
+Daily Production Data,WELL_TYPE,0
+Monthly Production Data,Wellbore name,1
+Monthly Production Data,NPDCode,1
+Monthly Production Data,Year,1
+Monthly Production Data,Month,1
+Monthly Production Data,On Stream,11
+Monthly Production Data,Oil,215
+Monthly Production Data,Gas,215
+Monthly Production Data,Water,215
+Monthly Production Data,GI,526
+Monthly Production Data,WI,325
